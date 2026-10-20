@@ -1,0 +1,735 @@
+
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Conversation Decoder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,500;6..72,600&display=swap" rel="stylesheet">
+<style>
+/* Layout: a working desk. Left column takes in what was said; right column is the growing dictionary. */
+:root {
+  --paper: #f3f4f7; --sheet: #ffffff; --ink: #151a23; --ink-2: #485062; --ink-3: #788094;
+  --rule: #dce0e8; --rule-2: #eceef3; --accent: #0f6b6e; --accent-ink: #ffffff; --accent-soft: #e2f1f0;
+  --mark: #fde9a6; --good: #1e7a4c; --good-soft: #e3f3ea; --warn: #8f5a00; --warn-soft: #fbf0dc;
+  --f-head: "Newsreader", "Iowan Old Style", Georgia, serif;
+  --f-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --r: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0e1117; --sheet: #161a22; --ink: #e7eaf0; --ink-2: #b3b9c6; --ink-3: #858c9b;
+    --rule: #2a313e; --rule-2: #1f2530; --accent: #6fd0cc; --accent-ink: #0e1117; --accent-soft: #123536;
+    --mark: #5b4a12; --good: #6ad3a0; --good-soft: #15302a; --warn: #f0b95e; --warn-soft: #33270f; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #0e1117; --sheet: #161a22; --ink: #e7eaf0; --ink-2: #b3b9c6; --ink-3: #858c9b;
+  --rule: #2a313e; --rule-2: #1f2530; --accent: #6fd0cc; --accent-ink: #0e1117; --accent-soft: #123536;
+  --mark: #5b4a12; --good: #6ad3a0; --good-soft: #15302a; --warn: #f0b95e; --warn-soft: #33270f; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { background: var(--paper); color: var(--ink); }
+body { font-family: var(--f-body); font-size: 15px; line-height: 1.5; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 20px 48px; }
+.wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 20px; }
+header.top { display: grid; gap: 6px; }
+.eyebrow { font-family: var(--f-mono); font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+h1 { font-family: var(--f-head); font-weight: 600; font-size: clamp(28px, 4vw, 38px); line-height: 1.1; margin: 0; text-wrap: balance; }
+.frame { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; font-size: 14px; color: var(--ink-2); }
+.frame span.step { background: var(--sheet); border: 1px solid var(--rule); border-radius: 999px; padding: 2px 10px; }
+.frame span.arrow { color: var(--ink-3); }
+.desk { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 20px; align-items: start; }
+@media (max-width: 900px) { .desk { grid-template-columns: minmax(0, 1fr); } }
+.panel { background: var(--sheet); border: 1px solid var(--rule); border-radius: var(--r); padding: 18px; display: grid; gap: 14px; min-width: 0; }
+.panel h2 { font-family: var(--f-head); font-weight: 600; font-size: 21px; margin: 0; line-height: 1.2; }
+.panel .lede { margin: -6px 0 0; color: var(--ink-2); font-size: 14px; }
+.col { display: grid; gap: 20px; min-width: 0; }
+label { font-size: 13px; font-weight: 500; color: var(--ink-2); display: block; margin-bottom: 4px; }
+input[type="text"], input[type="search"], input[type="date"], select, textarea {
+  width: 100%; font: inherit; color: var(--ink); background: var(--paper); border: 1px solid var(--rule);
+  border-radius: 8px; padding: 9px 11px; min-width: 0;
+}
+textarea { resize: vertical; min-height: 120px; line-height: 1.45; }
+textarea.short { min-height: 64px; }
+input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible, [tabindex]:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 560px) { .grid2 { grid-template-columns: minmax(0, 1fr); } }
+button { font: inherit; font-size: 14px; font-weight: 500; border-radius: 8px; padding: 8px 14px; cursor: pointer;
+  border: 1px solid var(--accent); background: var(--accent); color: var(--accent-ink); }
+button.ghost { background: transparent; color: var(--accent); }
+button.quiet { background: transparent; color: var(--ink-2); border-color: var(--rule); }
+button:disabled { opacity: .5; cursor: not-allowed; }
+button.small { font-size: 12.5px; padding: 5px 10px; }
+.status { font-size: 13px; color: var(--ink-3); min-height: 1.2em; }
+.status.bad { color: var(--warn); }
+.note { font-size: 12.5px; color: var(--ink-3); margin: 0; }
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--rule); margin: -4px -4px 0; padding: 0 4px; flex-wrap: wrap; }
+.tabs button { background: transparent; color: var(--ink-2); border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 8px 10px; }
+.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
+.count { font-family: var(--f-mono); font-size: 12px; color: var(--ink-3); margin-left: 4px; }
+.filters { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.chip { font-family: var(--f-mono); font-size: 11.5px; letter-spacing: .04em; border: 1px solid var(--rule); background: var(--paper);
+  color: var(--ink-2); border-radius: 999px; padding: 3px 9px; cursor: pointer; }
+.chip[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--ink); }
+.toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-2); margin-left: auto; }
+.list { display: grid; gap: 10px; }
+.entry { border: 1px solid var(--rule-2); border-radius: var(--r); padding: 14px 16px; display: grid; gap: 8px; background: var(--sheet); min-width: 0; }
+.entry.draft { border-style: dashed; border-color: var(--accent); }
+.head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; }
+.head .word { font-family: var(--f-head); font-weight: 600; font-size: 21px; line-height: 1.2; overflow-wrap: anywhere; }
+.head .aka { font-size: 13px; color: var(--ink-3); overflow-wrap: anywhere; }
+.tag { font-family: var(--f-mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2);
+  border: 1px solid var(--rule); border-radius: 4px; padding: 1px 6px; }
+.pill { font-size: 11.5px; border-radius: 999px; padding: 1px 8px; }
+.pill.learning { background: var(--warn-soft); color: var(--warn); }
+.pill.known { background: var(--good-soft); color: var(--good); }
+.pill.low { background: var(--warn-soft); color: var(--warn); }
+.sense { display: grid; grid-template-columns: 9.5rem minmax(0, 1fr); gap: 2px 12px; }
+@media (max-width: 560px) { .sense { grid-template-columns: minmax(0, 1fr); } }
+.sense dt { font-family: var(--f-mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); padding-top: 3px; }
+.sense dd { margin: 0 0 6px; overflow-wrap: anywhere; }
+.entry .actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.meta { font-family: var(--f-mono); font-size: 11.5px; color: var(--ink-3); }
+.empty { border: 1px dashed var(--rule); border-radius: var(--r); padding: 18px; color: var(--ink-2); display: grid; gap: 8px; }
+.empty .skeleton { display: grid; grid-template-columns: 9.5rem minmax(0, 1fr); gap: 6px 12px; font-size: 13px; }
+.empty .skeleton span:nth-child(odd) { font-family: var(--f-mono); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); }
+.preview { border: 1px solid var(--rule-2); border-radius: 8px; padding: 10px 12px; background: var(--paper); font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow: auto; }
+mark { background: var(--mark); color: inherit; border-radius: 3px; padding: 0 2px; }
+.found { display: flex; flex-wrap: wrap; gap: 6px; }
+.found button { font-size: 12.5px; padding: 3px 9px; border-radius: 999px; background: var(--accent-soft); color: var(--ink); border: 1px solid transparent; }
+.signals { display: grid; gap: 10px; }
+.signals .hint { font-size: 12.5px; color: var(--ink-3); margin: -2px 0 0; }
+.call { border-top: 1px solid var(--rule-2); padding-top: 12px; display: grid; gap: 6px; min-width: 0; }
+.call:first-child { border-top: 0; padding-top: 0; }
+.call h3 { margin: 0; font-size: 15px; font-weight: 600; }
+.call dl { display: grid; grid-template-columns: 11rem minmax(0, 1fr); gap: 2px 12px; margin: 0; font-size: 14px; }
+@media (max-width: 560px) { .call dl { grid-template-columns: minmax(0, 1fr); } }
+.call dt { color: var(--ink-3); font-size: 12.5px; padding-top: 2px; }
+.call dd { margin: 0 0 4px; overflow-wrap: anywhere; white-space: pre-wrap; }
+.quiz { display: grid; gap: 12px; justify-items: start; }
+.quiz .word { font-family: var(--f-head); font-weight: 600; font-size: 30px; line-height: 1.15; }
+.quiz .score { font-family: var(--f-mono); font-size: 12px; color: var(--ink-3); }
+.edit { display: grid; gap: 8px; }
+.edit textarea { min-height: 56px; }
+@media (prefers-reduced-motion: no-preference) { .entry.flash { animation: flash 1.2s ease-out; } }
+@keyframes flash { from { box-shadow: 0 0 0 3px var(--accent-soft); } to { box-shadow: 0 0 0 0 transparent; } }
+.ai { display: grid; gap: 8px; border: 1px dashed var(--accent); border-radius: var(--r); padding: 12px; }
+.ai textarea { min-height: 90px; font-size: 13px; }
+.backup { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; border-top: 1px solid var(--rule-2); padding-top: 12px; }
+.account { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 13px; color: var(--ink-2); }
+.gate { max-width: 460px; }
+footer.foot { font-size: 12.5px; color: var(--ink-3); }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="top">
+    <span class="eyebrow">Any business conversation · your working glossary</span>
+    <h1>Conversation Decoder</h1>
+    <div class="frame" aria-label="The four-part frame">
+      <span class="step">Term</span><span class="arrow">→</span><span class="step">Plain English</span><span class="arrow">→</span>
+      <span class="step">Why it matters here</span><span class="arrow">→</span><span class="step">What decision it affects</span>
+    </div>
+    <div class="account" id="account" hidden><span id="who"></span><button id="signout" class="small quiet" type="button">Sign out</button></div>
+  </header>
+
+  <section class="panel gate" id="gate" aria-labelledby="gate-h">
+    <h2 id="gate-h">Sign in to your word bank</h2>
+    <p class="lede" id="gate-lede">Enter the email you were invited with. You'll get a one-time sign-in link.</p>
+    <div><label for="gate-email">Email</label><input id="gate-email" type="text" inputmode="email" autocomplete="email" placeholder="you@example.com"></div>
+    <div class="row"><button id="gate-send" type="button">Email me a sign-in link</button><span class="status" id="gate-status" aria-live="polite"></span></div>
+  </section>
+
+  <main class="desk" id="desk" hidden>
+    <div class="col">
+      <section class="panel" aria-labelledby="dec-h">
+        <h2 id="dec-h">Decode a term</h2>
+        <p class="lede">Type what you heard. Your glossary answers first; an AI chat fills in anything new, read through the context you set.</p>
+        <div>
+          <label for="ctx">Context: who you were talking with, or what business</label>
+          <input id="ctx" type="text" list="ctx-list" autocomplete="off" placeholder="e.g. Wingate asset management, jet detailing client, lender">
+          <datalist id="ctx-list"></datalist>
+        </div>
+        <div>
+          <label for="dec-input">Term or line you heard</label>
+          <input id="dec-input" type="text" autocomplete="off" placeholder="e.g. They want a right of first refusal before signing the LOI">
+        </div>
+        <div class="row">
+          <button id="dec-look" type="button">Look up</button>
+          <button id="dec-ask" class="ghost" type="button">Decode with AI</button>
+          <span class="status" id="dec-status" aria-live="polite"></span>
+        </div>
+        <div id="dec-ai" class="ai" hidden></div>
+        <div class="list" id="dec-out"></div>
+      </section>
+
+      <section class="panel" aria-labelledby="call-h">
+        <h2 id="call-h">Log a conversation</h2>
+        <p class="lede">Raw information, then interpretation, then consequence, then decision. Capture all four.</p>
+        <div class="grid2">
+          <div><label for="call-date">Date</label><input id="call-date" type="date"></div>
+          <div><label for="call-type">Kind of conversation</label>
+            <select id="call-type">
+              <option>Meeting</option>
+              <option>Phone or video call</option>
+              <option>Negotiation</option>
+              <option>Sales or pitch</option>
+              <option>Investor or lender</option>
+              <option>Vendor or contractor</option>
+              <option>Interview</option>
+              <option>Networking</option>
+              <option>Podcast, talk or panel</option>
+              <option>Other</option>
+            </select></div>
+        </div>
+        <div>
+          <label for="call-notes">Notes, as you took them</label>
+          <textarea id="call-notes" placeholder="Paste or type your raw notes. Terms you already know get highlighted."></textarea>
+          <p class="note">Saved to your private account. Only you can see it, on any device you sign in from. Leave out personal details about other people.</p>
+        </div>
+        <div class="row">
+          <button id="scan" class="quiet" type="button">Find terms</button>
+          <button id="scan-ask" class="ghost" type="button">Find new terms with AI</button>
+          <span class="status" id="scan-status" aria-live="polite"></span>
+        </div>
+        <div id="scan-ai" class="ai" hidden></div>
+        <div id="scan-out" hidden>
+          <div class="preview" id="scan-preview"></div>
+          <p class="note" id="scan-found-label" style="margin-top:8px"></p>
+          <div class="found" id="scan-found"></div>
+        </div>
+        <div class="list" id="scan-drafts"></div>
+        <div class="signals">
+          <div><label for="sig-elevated">What got the most airtime</label><textarea class="short" id="sig-elevated" placeholder="What did they keep coming back to, or push hardest on?"></textarea></div>
+          <div><label for="sig-ignored">What got waved off</label><textarea class="short" id="sig-ignored" placeholder="What came up and got dismissed or skipped?"></textarea></div>
+          <div><label for="sig-next">What the decision-maker asked next</label><textarea class="short" id="sig-next" placeholder="Their follow-up question tells you what they think matters."></textarea></div>
+          <div><label for="sig-action">What happens next</label><textarea class="short" id="sig-action" placeholder="Who does what, by when."></textarea></div>
+          <div><label for="sig-wish">Question I should have asked</label><textarea class="short" id="sig-wish" placeholder="Bring it to the next conversation."></textarea></div>
+        </div>
+        <div class="row">
+          <button id="call-save" type="button">Save conversation</button>
+          <span class="status" id="call-status" aria-live="polite"></span>
+        </div>
+      </section>
+    </div>
+
+    <section class="panel" aria-label="Glossary, quiz and conversation log">
+      <div class="tabs" role="tablist">
+        <button role="tab" id="tab-glossary" aria-controls="pane-glossary" aria-selected="true" type="button">Glossary<span class="count" id="n-terms"></span></button>
+        <button role="tab" id="tab-quiz" aria-controls="pane-quiz" aria-selected="false" type="button">Quiz me<span class="count" id="n-learning"></span></button>
+        <button role="tab" id="tab-calls" aria-controls="pane-calls" aria-selected="false" type="button">Conversations<span class="count" id="n-calls"></span></button>
+      </div>
+
+      <div id="pane-glossary" role="tabpanel" aria-labelledby="tab-glossary" class="list">
+        <div class="row">
+          <input id="g-search" type="search" placeholder="Search terms, meanings and contexts" aria-label="Search the glossary">
+        </div>
+        <div class="filters" id="g-tags" aria-label="Filter by area"></div>
+        <div id="g-list" class="list"></div>
+        <div class="backup">
+          <button id="bk-save" class="small quiet" type="button">Back up to a file</button>
+          <label class="small quiet" for="bk-load" style="margin:0"><span class="note">Restore from a backup:</span></label>
+          <input id="bk-load" type="file" accept="application/json,.json" style="max-width:220px">
+          <span class="status" id="bk-status" aria-live="polite"></span>
+        </div>
+      </div>
+
+      <div id="pane-quiz" role="tabpanel" aria-labelledby="tab-quiz" hidden>
+        <div id="quiz" class="quiz"></div>
+      </div>
+
+      <div id="pane-calls" role="tabpanel" aria-labelledby="tab-calls" hidden>
+        <div id="calls" class="list"></div>
+      </div>
+    </section>
+  </main>
+  <footer class="foot">Each person's word bank is private to their account. Decoding uses your word bank and recent conversations as context.</footer>
+</div>
+
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+(() => {
+  const $ = (s) => document.querySelector(s);
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const slug = (t) => String(t || "").toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "term";
+  const TAGS = ["Finance", "Accounting", "Deals", "Real estate", "Legal", "Operations", "Sales", "Marketing", "Tech", "Tax", "Industry", "Other"];
+  const today = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+  const store = { get(k, d) { try { const v = localStorage.getItem("bd-" + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+                  set(k, v) { try { localStorage.setItem("bd-" + k, JSON.stringify(v)); } catch (e) { /* storage unavailable */ } } };
+
+  let db = null, sample = null, live = false, dbError = "";
+  let TERMS = [], CALLS = [];
+  const state = { q: "", tag: store.get("tag", "All"), learningOnly: store.get("learning", false), tab: store.get("tab", "glossary"), quiz: null, quizStats: { right: 0, seen: 0 } };
+
+  // ---------------------------------------------------------------- matching
+  function namesOf(t) { return [t.term].concat(Array.isArray(t.aliases) ? t.aliases : []).filter(Boolean); }
+  function findTerm(q) {
+    const k = String(q || "").trim().toLowerCase();
+    if (!k) return null;
+    return TERMS.find((t) => namesOf(t).some((n) => n.toLowerCase() === k)) || null;
+  }
+  function reEscape(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+  function termRegex() {
+    const pairs = [];
+    TERMS.forEach((t) => namesOf(t).forEach((n) => { if (n.length >= 2) pairs.push(n); }));
+    if (!pairs.length) return null;
+    pairs.sort((a, b) => b.length - a.length);
+    const body = pairs.map((n) => {
+      const e = reEscape(n);
+      const pre = /^\w/.test(n) ? "\\b" : "", post = /\w$/.test(n) ? "\\b" : "";
+      return pre + e + post;
+    }).join("|");
+    return new RegExp(body, "gi");
+  }
+  function scanText(text) {
+    const re = termRegex();
+    const found = new Map();
+    if (!re || !text) return { html: esc(text || ""), found: [] };
+    let html = "", last = 0, m;
+    while ((m = re.exec(text)) !== null) {
+      if (m[0].length === 0) { re.lastIndex++; continue; }
+      const t = findTerm(m[0]);
+      html += esc(text.slice(last, m.index)) + "<mark>" + esc(m[0]) + "</mark>";
+      last = m.index + m[0].length;
+      if (t) found.set(t.id, t);
+    }
+    html += esc(text.slice(last));
+    return { html, found: Array.from(found.values()) };
+  }
+
+  // ---------------------------------------------------------------- entry cards
+  function senseHTML(t) {
+    return `<dl class="sense">
+      <dt>Plain English</dt><dd>${esc(t.plain)}</dd>
+      <dt>Why it matters</dt><dd>${esc(t.why)}</dd>
+      <dt>Decision it affects</dt><dd>${esc(t.decision)}</dd></dl>`;
+  }
+  function entryHTML(t, opts = {}) {
+    const aka = (t.aliases || []).filter(Boolean);
+    const known = t.mastered === true;
+    const heard = Number(t.heard || 0);
+    return `<article class="entry" data-id="${esc(t.id)}">
+      <div class="head"><span class="word">${esc(t.term)}</span>
+        ${aka.length ? `<span class="aka">also ${esc(aka.join(", "))}</span>` : ""}
+        <span class="tag">${esc(t.tag || "Other")}</span>
+        ${t.context ? `<span class="aka">${esc(t.context)}</span>` : ""}
+        <span class="pill ${known ? "known" : "learning"}">${known ? "Known" : "Learning"}</span></div>
+      ${senseHTML(t)}
+      <div class="row" style="justify-content:space-between">
+        <span class="meta">${heard ? `heard ${heard}x${t.lastHeard ? ", last " + esc(t.lastHeard) : ""}` : "not heard in a logged conversation yet"}${t.source === "starter" ? " · starter set" : t.source === "claude" ? " · decoded by AI" : ""}</span>
+        ${opts.actions === false ? "" : `<span class="actions">
+          <button class="small quiet" data-act="known" type="button">${known ? "Back to learning" : "I know this"}</button>
+          <button class="small quiet" data-act="edit" type="button">Edit</button>
+          <button class="small quiet" data-act="del" type="button">Delete</button></span>`}
+      </div></article>`;
+  }
+  function draftHTML(d, key) {
+    const tagOpts = TAGS.map((g) => `<option${g === d.tag ? " selected" : ""}>${g}</option>`).join("");
+    return `<article class="entry draft" data-draft="${esc(key)}">
+      <div class="head"><span class="word">${esc(d.term)}</span><span class="tag">Draft</span>
+        ${d.confidence === "low" ? `<span class="pill low">The AI isn't sure: confirm next time</span>` : ""}</div>
+      <div class="edit">
+        <div><label for="${key}-term">Term</label><input id="${key}-term" type="text" value="${esc(d.term)}"></div>
+        <div><label for="${key}-aka">Also called (comma separated)</label><input id="${key}-aka" type="text" value="${esc((d.aliases || []).join(", "))}"></div>
+        <div><label for="${key}-plain">Plain English</label><textarea id="${key}-plain">${esc(d.plain)}</textarea></div>
+        <div><label for="${key}-why">Why it matters</label><textarea id="${key}-why">${esc(d.why)}</textarea></div>
+        <div><label for="${key}-dec">Decision it affects</label><textarea id="${key}-dec">${esc(d.decision)}</textarea></div>
+        <div class="grid2"><div><label for="${key}-tag">Area</label><select id="${key}-tag">${tagOpts}</select></div>
+        <div><label for="${key}-ctx">Context</label><input id="${key}-ctx" type="text" list="ctx-list" value="${esc(d.context || "")}"></div></div>
+      </div>
+      <div class="actions"><button class="small quiet" data-act="drop" type="button">Discard</button>
+        <button class="small" data-act="save" type="button">Save to glossary</button></div></article>`;
+  }
+  function readDraft(key) {
+    const v = (id) => ($("#" + key + "-" + id) || {}).value || "";
+    return { term: v("term").trim(), aliases: v("aka").split(",").map((s) => s.trim()).filter(Boolean).slice(0, 8),
+             plain: v("plain").trim(), why: v("why").trim(), decision: v("dec").trim(), tag: v("tag") || "Other", context: v("ctx").trim().slice(0, 80) };
+  }
+
+  // ---------------------------------------------------------------- db writes
+  async function saveTerm(d, source) {
+    if (!db) throw new Error("no-db");
+    const id = slug(d.term);
+    const existing = TERMS.find((t) => t.id === id);
+    const now = new Date().toISOString();
+    const body = { term: d.term.slice(0, 120), aliases: d.aliases || [], plain: (d.plain || "").slice(0, 1200), why: (d.why || "").slice(0, 800),
+                   decision: (d.decision || "").slice(0, 400), tag: TAGS.includes(d.tag) ? d.tag : "Other", context: (d.context || "").slice(0, 80), updatedAt: now };
+    if (existing) await db.collection("terms").doc(id).update(body);
+    else await db.collection("terms").doc(id).set(Object.assign(body, { source: source || "you", heard: 0, mastered: false, streak: 0, createdAt: now }));
+    return id;
+  }
+  function dbMessage(e) {
+    const code = e && e.code;
+    if (code === "quota_exceeded" || code === "resource_exhausted") return "The store is full or busy. Try again shortly.";
+    if (code === "invalid_argument") return "This account can't write here.";
+    if (e && e.message === "no-db") return "This browser is blocking storage. Allow site data and reload.";
+    return "Didn't save. Try again.";
+  }
+
+  // ---------------------------------------------------------------- Claude
+  function disableAsk() {}
+  function clean(d) {
+    return { term: String(d.term || "").trim(), aliases: Array.isArray(d.aliases) ? d.aliases.map(String).slice(0, 8) : [],
+             plain: String(d.plain || ""), why: String(d.why || ""), decision: String(d.decision || ""),
+             tag: TAGS.includes(d.tag) ? d.tag : "Other", context: currentCtx(), confidence: ["high", "medium", "low"].includes(d.confidence) ? d.confidence : "medium" };
+  }
+
+  function currentCtx() { return $("#ctx").value.trim().slice(0, 80); }
+  $("#ctx").value = store.get("ctx", "");
+  $("#ctx").addEventListener("change", () => store.set("ctx", currentCtx()));
+  function renderCtxList() {
+    const seen = new Set(); TERMS.forEach((t) => t.context && seen.add(t.context)); CALLS.forEach((c) => c.context && seen.add(c.context));
+    $("#ctx-list").innerHTML = Array.from(seen).sort().map((c) => `<option value="${esc(c)}"></option>`).join("");
+  }
+
+  // ---------------------------------------------------------------- decode panel
+  const drafts = new Map(); let draftN = 0;
+  function showDecode(hits, newDrafts, note) {
+    const out = $("#dec-out");
+    out.innerHTML = (note ? `<p class="note">${esc(note)}</p>` : "") + hits.map((t) => entryHTML(t)).join("") +
+      newDrafts.map(([k, d]) => draftHTML(d, k)).join("");
+  }
+  $("#dec-look").onclick = () => {
+    const q = $("#dec-input").value.trim();
+    if (!q) { $("#dec-status").textContent = "Type a term first."; return; }
+    const exact = findTerm(q);
+    const scanned = exact ? [exact] : scanText(q).found;
+    if (scanned.length) { $("#dec-status").textContent = ""; showDecode(scanned, [], scanned.length > 1 ? "Terms from your glossary in that line:" : ""); }
+    else { $("#dec-status").textContent = live ? "Not in your glossary yet. Use Decode with AI." : "Your glossary loads when this page is open in Claude."; $("#dec-out").innerHTML = ""; }
+  };
+  $("#dec-input").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#dec-look").click(); });
+  async function aiDecode(payload) {
+    const { data, error } = await sb.functions.invoke("decode", { body: payload });
+    if (error) {
+      let msg = "";
+      try { msg = (await error.context.json()).error || ""; } catch (e) { /* no body */ }
+      throw new Error(msg || "The decoder didn't answer. Try again in a minute.");
+    }
+    if (data && data.error) throw new Error(data.error);
+    return data;
+  }
+  function flashBad(el, msg) { el.textContent = msg; el.classList.add("bad"); setTimeout(() => el.classList.remove("bad"), 5000); }
+  $("#dec-ask").onclick = async () => {
+    const q = $("#dec-input").value.trim();
+    if (!q) { $("#dec-status").textContent = "Type a term first."; return; }
+    $("#dec-ask").disabled = true; $("#dec-status").textContent = "Decoding with your word bank...";
+    try {
+      const res = clean(await aiDecode({ mode: "one", input: q, notes: $("#call-notes").value.trim(), context: currentCtx() }));
+      if (!res.term) throw new Error("The answer came back empty. Try rewording.");
+      const k = "d" + (++draftN); drafts.set(k, res);
+      $("#dec-status").textContent = "Check it, edit anything, then save.";
+      showDecode([], [[k, res]], "");
+    } catch (e) { flashBad($("#dec-status"), e.message); }
+    finally { $("#dec-ask").disabled = false; }
+  };
+  $("#scan-ask").onclick = async () => {
+    const text = $("#call-notes").value.trim();
+    if (!text) { $("#scan-status").textContent = "Paste your notes first."; return; }
+    runScan();
+    $("#scan-ask").disabled = true; $("#scan-status").textContent = "Reading your notes...";
+    try {
+      const res = await aiDecode({ mode: "scan", input: text, context: currentCtx() });
+      const list = (res && Array.isArray(res.terms) ? res.terms : []).map(clean).filter((d) => d.term && !findTerm(d.term)).slice(0, 8);
+      const box = $("#scan-drafts");
+      if (!list.length) { $("#scan-status").textContent = "Nothing new in these notes. Everything is already in your word bank."; box.innerHTML = ""; return; }
+      box.innerHTML = list.map((d) => { const k = "s" + (++draftN); drafts.set(k, d); return draftHTML(d, k); }).join("");
+      $("#scan-status").textContent = `${list.length} new term${list.length === 1 ? "" : "s"}. Check each one, then save.`;
+    } catch (e) { flashBad($("#scan-status"), e.message); }
+    finally { $("#scan-ask").disabled = false; }
+  };
+
+  // drafts: save / discard (both panels)
+  document.addEventListener("click", async (e) => {
+    const b = e.target.closest("button[data-act]"); if (!b) return;
+    const card = b.closest("[data-draft]");
+    if (card) {
+      const key = card.dataset.draft;
+      if (b.dataset.act === "drop") { drafts.delete(key); card.remove(); return; }
+      if (b.dataset.act === "save") {
+        const d = readDraft(key);
+        if (!d.term || !d.plain) { b.textContent = "Add a term and its meaning"; return; }
+        b.disabled = true; b.textContent = "Saving...";
+        try { await saveTerm(d, "claude"); drafts.delete(key); card.outerHTML = `<p class="note">Saved "${esc(d.term)}" to your glossary.</p>`; }
+        catch (err) { b.disabled = false; b.textContent = dbMessage(err); }
+      }
+      return;
+    }
+    const entry = b.closest("article.entry[data-id]");
+    if (!entry || !db) return;
+    const t = TERMS.find((x) => x.id === entry.dataset.id); if (!t) return;
+    const ref = db.collection("terms").doc(t.id);
+    try {
+      if (b.dataset.act === "known") await ref.update({ mastered: !(t.mastered === true), streak: 0, updatedAt: new Date().toISOString() });
+      if (b.dataset.act === "del") {
+        if (b.dataset.confirm !== "1") { b.dataset.confirm = "1"; b.textContent = "Click again to delete"; setTimeout(() => { b.dataset.confirm = ""; b.textContent = "Delete"; }, 3500); return; }
+        await ref.delete();
+      }
+      if (b.dataset.act === "edit") {
+        const k = "e" + (++draftN); drafts.set(k, t);
+        entry.outerHTML = draftHTML(Object.assign({}, t, { confidence: "high" }), k);
+      }
+    } catch (err) { b.textContent = dbMessage(err); }
+  });
+
+  // ---------------------------------------------------------------- save a call
+  $("#call-date").value = today();
+  $("#call-save").onclick = async () => {
+    const notes = $("#call-notes").value.trim();
+    const sig = { elevated: $("#sig-elevated").value.trim(), ignored: $("#sig-ignored").value.trim(), askedNext: $("#sig-next").value.trim(), action: $("#sig-action").value.trim(), wish: $("#sig-wish").value.trim() };
+    if (!notes && !sig.elevated && !sig.askedNext && !sig.action) { $("#call-status").textContent = "Add notes or at least one of the signals."; return; }
+    if (!db) { $("#call-status").textContent = "This browser is blocking storage."; return; }
+    const found = runScan();
+    const date = $("#call-date").value || today();
+    $("#call-save").disabled = true; $("#call-status").textContent = "Saving...";
+    try {
+      await db.collection("calls").add({ date, call: $("#call-type").value, context: currentCtx(), wish: sig.wish.slice(0, 2000), notes: notes.slice(0, 20000), elevated: sig.elevated.slice(0, 2000),
+        ignored: sig.ignored.slice(0, 2000), askedNext: sig.askedNext.slice(0, 2000), action: sig.action.slice(0, 2000),
+        terms: found.map((t) => t.id).slice(0, 100), createdAt: new Date().toISOString() });
+      await Promise.all(found.map((t) => db.collection("terms").doc(t.id).update({ heard: Number(t.heard || 0) + 1, lastHeard: date }).catch(() => {})));
+      ["#call-notes", "#sig-elevated", "#sig-ignored", "#sig-next", "#sig-action", "#sig-wish"].forEach((s) => { $(s).value = ""; });
+      $("#scan-out").hidden = true; $("#scan-drafts").innerHTML = "";
+      $("#call-status").textContent = `Saved. ${found.length} glossary term${found.length === 1 ? "" : "s"} marked as heard.`;
+    } catch (err) { $("#call-status").textContent = dbMessage(err); }
+    finally { $("#call-save").disabled = false; }
+  };
+
+  // ---------------------------------------------------------------- right column
+  function setTab(tab) {
+    state.tab = tab; store.set("tab", tab);
+    ["glossary", "quiz", "calls"].forEach((k) => { $("#tab-" + k).setAttribute("aria-selected", String(k === tab)); $("#pane-" + k).hidden = k !== tab; });
+    if (tab === "quiz" && !state.quiz) nextQuiz();
+    render();
+  }
+  ["glossary", "quiz", "calls"].forEach((k) => { $("#tab-" + k).onclick = () => setTab(k); });
+
+  function renderTags() {
+    const counts = {}; TERMS.forEach((t) => { counts[t.tag || "Other"] = (counts[t.tag || "Other"] || 0) + 1; });
+    const tags = ["All"].concat(TAGS.filter((g) => counts[g]));
+    if (!tags.includes(state.tag)) state.tag = "All";
+    $("#g-tags").innerHTML = tags.map((g) => `<button class="chip" type="button" aria-pressed="${g === state.tag}" data-tag="${esc(g)}">${esc(g)}${g !== "All" ? " " + counts[g] : ""}</button>`).join("") +
+      `<label class="toggle"><input type="checkbox" id="g-learning"${state.learningOnly ? " checked" : ""}> Learning only</label>`;
+    $("#g-learning").onchange = (e) => { state.learningOnly = e.target.checked; store.set("learning", state.learningOnly); renderGlossary(); };
+  }
+  $("#g-tags").addEventListener("click", (e) => { const b = e.target.closest("button[data-tag]"); if (!b) return; state.tag = b.dataset.tag; store.set("tag", state.tag); renderTags(); renderGlossary(); });
+  $("#g-search").addEventListener("input", (e) => { state.q = e.target.value.trim().toLowerCase(); renderGlossary(); });
+
+  function emptyState(title, body) {
+    return `<div class="empty"><strong>${esc(title)}</strong><span>${body}</span>
+      <div class="skeleton" aria-hidden="true"><span>Term</span><span>Letter of intent</span><span>Plain English</span><span>What it means, in two sentences</span>
+      <span>Why it matters</span><span>Why the people in the room pay attention</span><span>Decision it affects</span><span>What changes because of it</span></div></div>`;
+  }
+  function renderGlossary() {
+    const el = $("#g-list");
+    if (!db) { el.innerHTML = emptyState("Your glossary lives here", "It loads when this page is open in Claude. Each entry follows your four-part frame."); return; }
+    if (!live) { el.innerHTML = dbError ? emptyState("The glossary didn't load", esc(dbError)) : `<p class="note">Loading your glossary...</p>`; return; }
+    if (!TERMS.length) { el.innerHTML = emptyState("No terms yet", "Decode a term on the left and save it, or log a conversation and let an AI pick out the jargon."); return; }
+    const q = state.q;
+    const list = TERMS.filter((t) => (state.tag === "All" || (t.tag || "Other") === state.tag) && (!state.learningOnly || t.mastered !== true) &&
+      (!q || [t.term, t.plain, t.why, t.decision, t.context].concat(t.aliases || []).some((s) => String(s || "").toLowerCase().includes(q))))
+      .sort((a, b) => a.term.localeCompare(b.term));
+    el.innerHTML = list.length ? list.map((t) => entryHTML(t)).join("") : `<p class="note">Nothing matches. Try another word, or decode it on the left.</p>`;
+  }
+  function nextQuiz() {
+    const pool = TERMS.filter((t) => t.mastered !== true);
+    if (!pool.length) { state.quiz = null; return; }
+    const prev = state.quiz && state.quiz.id;
+    let pick = pool[Math.floor(Math.random() * pool.length)];
+    if (pool.length > 1 && pick.id === prev) pick = pool[(pool.indexOf(pick) + 1) % pool.length];
+    state.quiz = { id: pick.id, shown: false };
+  }
+  function renderQuiz() {
+    const el = $("#quiz");
+    if (!db || !live) { el.innerHTML = emptyState("Quiz yourself on the terms you're learning", "It works once your glossary loads."); return; }
+    if (!state.quiz) nextQuiz();
+    const t = state.quiz && TERMS.find((x) => x.id === state.quiz.id);
+    if (!t) { el.innerHTML = `<p class="note">Every term is marked known. Mark some as learning, or log your next conversation.</p>`; return; }
+    const s = state.quizStats;
+    el.innerHTML = `<span class="score">${s.seen ? `${s.right} of ${s.seen} right this session · ` : ""}three in a row marks a term known</span>
+      <div class="word">${esc(t.term)}</div>
+      ${state.quiz.shown ? senseHTML(t) + `<div class="row"><button type="button" id="q-yes">I had it</button><button type="button" class="quiet" id="q-no">Not yet</button></div>`
+        : `<p class="note">Say the plain meaning, why it matters and the decision it moves. Then check.</p><button type="button" id="q-show">Show the answer</button>`}`;
+    const show = $("#q-show"); if (show) show.onclick = () => { state.quiz.shown = true; renderQuiz(); };
+    const grade = async (ok) => {
+      s.seen++; if (ok) s.right++;
+      const streak = ok ? Number(t.streak || 0) + 1 : 0;
+      try { await db.collection("terms").doc(t.id).update({ streak, mastered: streak >= 3, lastReviewed: new Date().toISOString() }); } catch (e) { /* keep quizzing */ }
+      nextQuiz(); renderQuiz();
+    };
+    const y = $("#q-yes"), n = $("#q-no");
+    if (y) y.onclick = () => grade(true);
+    if (n) n.onclick = () => grade(false);
+  }
+  function renderCalls() {
+    const el = $("#calls");
+    if (!db || !live) { el.innerHTML = emptyState("Your conversation log lives here", "Each saved conversation keeps your notes, the signals and the terms you heard."); return; }
+    if (!CALLS.length) { el.innerHTML = `<div class="empty"><strong>No conversations logged yet</strong><span>Log your next meeting or call on the left. Over a few weeks the pattern shows: what each group pushes on, what they wave off, and the question they always ask next.</span></div>`; return; }
+    const name = (id) => { const t = TERMS.find((x) => x.id === id); return t ? t.term : id; };
+    el.innerHTML = CALLS.map((c) => `<article class="call">
+      <h3>${esc(c.context || c.call || "Conversation")} <span class="meta">${esc(c.context ? (c.call || "") + " · " : "")}${esc(c.date || "")}</span></h3>
+      <dl>
+        ${c.elevated ? `<dt>Most airtime</dt><dd>${esc(c.elevated)}</dd>` : ""}
+        ${c.ignored ? `<dt>Waved off</dt><dd>${esc(c.ignored)}</dd>` : ""}
+        ${c.askedNext ? `<dt>Decision-maker asked next</dt><dd>${esc(c.askedNext)}</dd>` : ""}
+        ${c.action ? `<dt>What happens next</dt><dd>${esc(c.action)}</dd>` : ""}
+        ${c.wish ? `<dt>Should have asked</dt><dd>${esc(c.wish)}</dd>` : ""}
+        ${(c.terms || []).length ? `<dt>Terms heard</dt><dd>${esc((c.terms || []).map(name).join(", "))}</dd>` : ""}
+      </dl>
+      ${c.notes ? `<details><summary class="note">Notes</summary><div class="preview">${esc(c.notes)}</div></details>` : ""}
+    </article>`).join("");
+  }
+  function render() {
+    const learning = TERMS.filter((t) => t.mastered !== true).length;
+    $("#n-terms").textContent = live ? String(TERMS.length) : "";
+    $("#n-learning").textContent = live ? String(learning) : "";
+    $("#n-calls").textContent = live ? String(CALLS.length) : "";
+    renderCtxList();
+    if (state.tab === "glossary") { renderTags(); renderGlossary(); }
+    if (state.tab === "quiz") renderQuiz();
+    if (state.tab === "calls") renderCalls();
+  }
+
+  // ---------------------------------------------------------------- boot
+  setTab(["glossary", "quiz", "calls"].includes(state.tab) ? state.tab : "glossary");
+  const STARTER = {"letter-of-intent": {"term": "Letter of intent", "aliases": ["LOI"], "plain": "A short, mostly non-binding document laying out the main terms of a deal before the full contract is drafted.", "why": "It locks in price and key terms so both sides can spend money on diligence and lawyers.", "decision": "Whether to move into diligence and drafting", "tag": "Deals", "context": "General business", "source": "starter", "heard": 0, "mastered": false, "streak": 0, "createdAt": "2026-10-20T17:30:00Z", "updatedAt": "2026-10-20T17:30:00Z"}, "term-sheet": {"term": "Term sheet", "aliases": [], "plain": "A summary of the key terms of an investment or loan, usually non-binding, used to agree on the big points first.", "why": "Most of the economics get fixed here; changing them later is hard.", "decision": "Accept, counter or walk before the full documents", "tag": "Deals", "context": "Investor or lender", "source": "starter", "heard": 0, "mastered": false, "streak": 0, "createdAt": "2026-10-20T17:30:00Z", "updatedAt": "2026-10-20T17:30:00Z"}, "ebitda": {"term": "EBITDA", "aliases": ["Earnings before interest, taxes, depreciation and amortization"], "plain": "Operating profit before financing, taxes and non-cash charges. A rough proxy for the cash a business throws off.", "why": "Buyers and lenders price and size deals off it.", "decision": "Valuation multiple and how much debt a business can carry", "tag": "Finance", "context": "General business", "source": "starter", "heard": 0, "mastered": false, "streak": 0, "createdAt": "2026-10-20T17:30:00Z", "updatedAt": "2026-10-20T17:30:00Z"}, "run-rate": {"term": "Run rate", "aliases": [], "plain": "Taking a recent period's results and stretching them to a full year, like last month's revenue times 12.", "why": "It makes a young business look its current size, but hides seasonality.", "decision": "How much to trust a growth or revenue claim", "tag": "Finance", "context": "General business", "source": "starter", "heard": 0, "mastered": false, "streak": 0, "createdAt": "2026-10-20T17:30:00Z", "updatedAt": "2026-10-20T17:30:00Z"}, "gross-margin": {"term": "Gross margin", "aliases": [], "plain": "Revenue minus the direct cost of delivering the product or service, as a share of revenue.", "why": "It shows whether each sale actually makes money before overhead.", "decision": "Pricing, and whether the business can scale", "tag": "Finance", "context": "General business", "source": "starter", "heard": 0, "mastered": false, "streak": 0, "createdAt": "2026-10-20T17:30:00Z", "updatedAt": "2026-10-20T17:30:00Z"}, "customer-acquisition-cost": {"term": "Customer acquisition cost", "aliases": ["CAC"], "plain": "What it costs in marketing and sales to win one new customer.", "why": "If it is higher than what a customer is worth, growth loses money.", "decision": "Marketing budget and which channels to keep", "tag": "Marketing", "context": "General business", "source": "starter", "heard": 0, "mastered": false, "streak": 0, "createdAt": "2026-10-20T17:30:00Z", "updatedAt": "2026-10-20T17:30:00Z"}, "burn-rate": {"term": "Burn rate", "aliases": ["burn"], "plain": "How much cash a business loses each month.", "why": "Together with cash on hand, it tells you how long the business can last.", "decision": "When to raise money or cut costs", "tag": "Finance", "context": "General business", "source": "starter", "heard": 0, "mastered": false, "streak": 0, "createdAt": "2026-10-20T17:30:00Z", "updatedAt": "2026-10-20T17:30:00Z"}, "runway": {"term": "Runway", "aliases": [], "plain": "How many months a business can keep operating before it runs out of cash, at its current burn.", "why": "Short runway weakens your hand in any negotiation.", "decision": "Timing of fundraising or cost cuts", "tag": "Finance", "context": "General business", "source": "starter", "heard": 0, "mastered": false, "streak": 0, "createdAt": "2026-10-20T17:30:00Z", "updatedAt": "2026-10-20T17:30:00Z"}, "net-30": {"term": "Net 30", "aliases": ["net terms"], "plain": "Payment is due 30 days after the invoice date.", "why": "Longer terms help the payer's cash flow and squeeze the seller's.", "decision": "Cash flow planning and what terms to offer or accept", "tag": "Accounting", "context": "Vendor or contractor", "source": "starter", "heard": 0, "mastered": false, "streak": 0, "createdAt": "2026-10-20T17:30:00Z", "updatedAt": "2026-10-20T17:30:00Z"}, "scope-of-work": {"term": "Scope of work", "aliases": ["SOW", "scope"], "plain": "The document that spells out exactly what a vendor or contractor will deliver, by when, and for what price.", "why": "Anything not in it becomes a change order or a fight.", "decision": "What you are paying for and how changes get priced", "tag": "Operations", "context": "Vendor or contractor", "source": "starter", "heard": 0, "mastered": false, "streak": 0, "createdAt": "2026-10-20T17:30:00Z", "updatedAt": "2026-10-20T17:30:00Z"}, "change-order": {"term": "Change order", "aliases": [], "plain": "A signed change to the original scope, price or schedule of a job.", "why": "It is where budgets quietly grow.", "decision": "Approving extra cost or time", "tag": "Operations", "context": "Vendor or contractor", "source": "starter", "heard": 0, "mastered": false, "streak": 0, "createdAt": "2026-10-20T17:30:00Z", "updatedAt": "2026-10-20T17:30:00Z"}, "right-of-first-refusal": {"term": "Right of first refusal", "aliases": ["ROFR"], "plain": "A right to match any outside offer before the owner can sell or lease to someone else.", "why": "It can scare off other buyers and lower the price an owner gets.", "decision": "Whether to grant it, and on what terms", "tag": "Legal", "context": "Real estate", "source": "starter", "heard": 0, "mastered": false, "streak": 0, "createdAt": "2026-10-20T17:30:00Z", "updatedAt": "2026-10-20T17:30:00Z"}, "due-diligence": {"term": "Due diligence", "aliases": ["diligence", "DD"], "plain": "The investigation a buyer, lender or investor does to confirm the facts before closing.", "why": "Problems found here are the main reason deals get repriced or die.", "decision": "Close, renegotiate or walk", "tag": "Deals", "context": "General business", "source": "starter", "heard": 0, "mastered": false, "streak": 0, "createdAt": "2026-10-20T17:30:00Z", "updatedAt": "2026-10-20T17:30:00Z"}, "non-disclosure-agreement": {"term": "Non-disclosure agreement", "aliases": ["NDA"], "plain": "A contract that keeps information shared in a deal or partnership confidential.", "why": "You usually need one signed before the other side shares real numbers.", "decision": "What you can share and with whom", "tag": "Legal", "context": "General business", "source": "starter", "heard": 0, "mastered": false, "streak": 0, "createdAt": "2026-10-20T17:30:00Z", "updatedAt": "2026-10-20T17:30:00Z"}, "unit-economics": {"term": "Unit economics", "aliases": [], "plain": "The revenue and costs tied to one unit of the business: one customer, one job, one sale.", "why": "If one unit does not make money, more units will not fix it.", "decision": "Pricing and whether to scale", "tag": "Finance", "context": "General business", "source": "starter", "heard": 0, "mastered": false, "streak": 0, "createdAt": "2026-10-20T17:30:00Z", "updatedAt": "2026-10-20T17:30:00Z"}, "pipeline": {"term": "Pipeline", "aliases": [], "plain": "The list of potential deals or customers at each stage before they close.", "why": "It is the best early read on future revenue.", "decision": "Where to spend sales time and how much revenue to expect", "tag": "Sales", "context": "General business", "source": "starter", "heard": 0, "mastered": false, "streak": 0, "createdAt": "2026-10-20T17:30:00Z", "updatedAt": "2026-10-20T17:30:00Z"}};
+  const cfg = window.DECODER_CONFIG || {};
+  const sb = (window.supabase && cfg.supabaseUrl && cfg.supabaseAnonKey && !/YOUR-/.test(cfg.supabaseUrl))
+    ? window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey) : null;
+  let uid = null;
+
+  function remoteDB() {
+    const cache = { terms: {}, calls: {}, meta: {} };
+    const subs = {};
+    const notify = (c) => (subs[c] || []).forEach((f) => f());
+    async function load(c) {
+      const out = {}; let from = 0;
+      for (;;) {
+        const { data, error } = await sb.from("docs").select("id,data").eq("collection", c).range(from, from + 999);
+        if (error) throw error;
+        data.forEach((r) => { out[r.id] = r.data; });
+        if (data.length < 1000) break;
+        from += 1000;
+      }
+      cache[c] = out; notify(c); return out;
+    }
+    async function putMany(c, obj) {
+      const rows = Object.entries(obj).map(([id, data]) => ({ user_id: uid, collection: c, id, data, updated_at: new Date().toISOString() }));
+      for (let i = 0; i < rows.length; i += 500) {
+        const { error } = await sb.from("docs").upsert(rows.slice(i, i + 500));
+        if (error) throw error;
+      }
+      Object.assign(cache[c], obj); notify(c);
+    }
+    const collection = (c) => ({
+      doc: (id) => ({
+        set: (data) => putMany(c, { [id]: Object.assign({}, data) }),
+        update: (data) => putMany(c, { [id]: Object.assign({}, cache[c][id] || {}, data) }),
+        async delete() {
+          const { error } = await sb.from("docs").delete().eq("collection", c).eq("id", id);
+          if (error) throw error;
+          delete cache[c][id]; notify(c);
+        }
+      }),
+      async add(data) { const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 7); await putMany(c, { [id]: data }); return { id }; },
+      orderBy(field, dir) {
+        let n = 1e9;
+        const q = { limit(k) { n = k; return q; }, onSnapshot(cb) {
+          const run = () => {
+            const rows = Object.entries(cache[c]).map(([id, d]) => ({ id, d }));
+            rows.sort((x, y) => { const p = String(x.d[field] ?? ""), r = String(y.d[field] ?? ""); return dir === "desc" ? r.localeCompare(p) : p.localeCompare(r); });
+            cb({ docs: rows.slice(0, n).map((r) => ({ id: r.id, data: () => r.d })) });
+          };
+          (subs[c] = subs[c] || []).push(run); return () => {};
+        } };
+        return q;
+      }
+    });
+    return { collection, load, putMany, read: (c) => cache[c], notify };
+  }
+
+  function showGate(msg) {
+    $("#gate").hidden = false; $("#desk").hidden = true; $("#account").hidden = true;
+    if (msg) $("#gate-lede").textContent = msg;
+  }
+  async function startSession(session) {
+    if (!session) { uid = null; db = null; TERMS = []; CALLS = []; live = false; showGate(); return; }
+    if (uid === session.user.id) return;
+    uid = session.user.id;
+    $("#gate").hidden = true; $("#desk").hidden = false; $("#account").hidden = false;
+    $("#who").textContent = session.user.email || "Signed in";
+    db = remoteDB();
+    db.collection("terms").orderBy("term").limit(5000).onSnapshot((snap) => {
+      TERMS = snap.docs.map((x) => Object.assign({ id: x.id }, x.data())).filter((t) => t.term);
+      live = true; render();
+      if (!$("#scan-out").hidden) runScan();
+    });
+    db.collection("calls").orderBy("date", "desc").limit(1000).onSnapshot((snap) => {
+      CALLS = snap.docs.map((x) => Object.assign({ id: x.id }, x.data()));
+      render();
+    });
+    try {
+      const [terms, , meta] = await Promise.all([db.load("terms"), db.load("calls"), db.load("meta")]);
+      if (!meta.seeded && !Object.keys(terms).length) await db.putMany("terms", JSON.parse(JSON.stringify(STARTER)));
+      if (!meta.seeded) await db.putMany("meta", { seeded: { at: new Date().toISOString() } });
+    } catch (e) { dbError = "Couldn't load your word bank. Reload to try again."; render(); }
+  }
+
+  if (!sb) {
+    showGate("This copy isn't connected to a database yet. Fill in config.js with your Supabase project URL and anon key.");
+    $("#gate-send").disabled = true;
+  } else {
+    sb.auth.getSession().then(({ data }) => startSession(data.session));
+    sb.auth.onAuthStateChange((_event, session) => startSession(session));
+    $("#gate-send").onclick = async () => {
+      const email = $("#gate-email").value.trim();
+      if (!/^\S+@\S+\.\S+$/.test(email)) { $("#gate-status").textContent = "Enter a full email address."; return; }
+      $("#gate-send").disabled = true; $("#gate-status").textContent = "Sending...";
+      const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin + location.pathname, shouldCreateUser: false } });
+      $("#gate-send").disabled = false;
+      $("#gate-status").textContent = error
+        ? (/signups not allowed|not found|invalid/i.test(error.message) ? "That email isn't invited yet. Ask the owner to invite you." : "Couldn't send the link. Try again in a minute.")
+        : "Check your email for the sign-in link.";
+    };
+    $("#gate-email").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#gate-send").click(); });
+    $("#signout").onclick = () => sb.auth.signOut();
+  }
+
+  $("#bk-save").onclick = () => {
+    if (!db) return;
+    const data = { app: "conversation-decoder", version: 1, savedAt: new Date().toISOString(), terms: db.read("terms"), calls: db.read("calls") };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = "conversation-decoder-backup-" + today() + ".json";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    $("#bk-status").textContent = "Backup saved to your downloads.";
+  };
+  $("#bk-load").onchange = (e) => {
+    const f = e.target.files && e.target.files[0]; if (!f) return;
+    const r = new FileReader();
+    r.onload = () => {
+      try {
+        const d = JSON.parse(r.result);
+        if (!d || d.app !== "conversation-decoder") throw new Error("not a backup");
+        $("#bk-status").textContent = "Restoring...";
+        Promise.all([db.putMany("terms", d.terms || {}), db.putMany("calls", d.calls || {})])
+          .then(() => { $("#bk-status").textContent = `Restored ${Object.keys(d.terms || {}).length} terms and ${Object.keys(d.calls || {}).length} conversations.`; })
+          .catch(() => { $("#bk-status").textContent = "Restore didn't finish. Try again."; });
+        return;
+        $("#bk-status").textContent = `Restored ${Object.keys(d.terms || {}).length} terms and ${Object.keys(d.calls || {}).length} conversations.`;
+      } catch (err) { $("#bk-status").textContent = "That file isn't a Conversation Decoder backup."; }
+      e.target.value = "";
+    };
+    r.readAsText(f);
+  };
+})();
+</script>
+</body>
+</html>
