@@ -125,6 +125,9 @@ mark { background: var(--mark); color: inherit; border-radius: 3px; padding: 0 2
 .backup { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; border-top: 1px solid var(--rule-2); padding-top: 12px; }
 .account { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 13px; color: var(--ink-2); }
 .gate { max-width: 460px; }
+.pw { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.pw input { width: auto; flex: 1 1 160px; }
+.nudge { font-size: 13px; color: var(--warn); }
 footer.foot { font-size: 12.5px; color: var(--ink-3); }
 </style>
 </head>
@@ -138,21 +141,33 @@ footer.foot { font-size: 12.5px; color: var(--ink-3); }
       <span class="step">Term</span><span class="arrow">→</span><span class="step">Plain English</span><span class="arrow">→</span>
       <span class="step">Why it matters here</span><span class="arrow">→</span><span class="step">What decision it affects</span>
     </div>
-    <div class="account" id="account" hidden><span id="who"></span><button id="signout" class="small quiet" type="button">Sign out</button></div>
+    <div class="account" id="account" hidden><span id="who"></span>
+      <button id="pw-open" class="small quiet" type="button">Set password</button>
+      <button id="signout" class="small quiet" type="button">Sign out</button>
+      <span class="nudge" id="pw-nudge" hidden>Set a password so you can sign in on any device without an email link.</span></div>
+    <div class="pw" id="pw-form" hidden>
+      <input id="pw-new" type="password" autocomplete="new-password" placeholder="New password (8+ characters)" aria-label="New password">
+      <input id="pw-again" type="password" autocomplete="new-password" placeholder="Type it again" aria-label="Confirm new password">
+      <button id="pw-save" class="small" type="button">Save password</button>
+      <button id="pw-cancel" class="small quiet" type="button">Cancel</button>
+      <span class="status" id="pw-status" aria-live="polite"></span>
+    </div>
   </header>
 
   <section class="panel gate" id="gate" aria-labelledby="gate-h">
     <h2 id="gate-h">Sign in to your word bank</h2>
-    <p class="lede" id="gate-lede">Enter the email you were invited with. You'll get a one-time sign-in link.</p>
-    <div><label for="gate-email">Email</label><input id="gate-email" type="text" inputmode="email" autocomplete="email" placeholder="you@example.com"></div>
-    <div class="row"><button id="gate-send" type="button">Email me a sign-in link</button><span class="status" id="gate-status" aria-live="polite"></span></div>
+    <p class="lede" id="gate-lede">Sign in with your email and password. First time, or forgot your password? Use the email link, then set a password once you're in.</p>
+    <div><label for="gate-email">Email</label><input id="gate-email" type="text" inputmode="email" autocomplete="username" placeholder="you@example.com"></div>
+    <div><label for="gate-pass">Password</label><input id="gate-pass" type="password" autocomplete="current-password"></div>
+    <div class="row"><button id="gate-signin" type="button">Sign in</button><button id="gate-send" class="ghost" type="button">Email me a sign-in link</button></div>
+    <span class="status" id="gate-status" aria-live="polite"></span>
   </section>
 
   <main class="desk" id="desk" hidden>
     <div class="col">
       <section class="panel" aria-labelledby="dec-h">
         <h2 id="dec-h">Decode a term</h2>
-        <p class="lede">Type what you heard. Your glossary answers first; an AI chat fills in anything new, read through the context you set.</p>
+        <p class="lede">Type what you heard. Your word bank answers first; the AI fills in anything new, read through the context you set and the terms you already know.</p>
         <div>
           <label for="ctx">Context: who you were talking with, or what business</label>
           <input id="ctx" type="text" list="ctx-list" autocomplete="off" placeholder="e.g. Wingate asset management, jet detailing client, lender">
@@ -660,11 +675,13 @@ footer.foot { font-size: 12.5px; color: var(--ink-3); }
     if (msg) $("#gate-lede").textContent = msg;
   }
   async function startSession(session) {
-    if (!session) { uid = null; db = null; TERMS = []; CALLS = []; live = false; showGate(); return; }
+    if (!session) { $("#pw-form").hidden = true; uid = null; db = null; TERMS = []; CALLS = []; live = false; showGate(); return; }
     if (uid === session.user.id) return;
     uid = session.user.id;
     $("#gate").hidden = true; $("#desk").hidden = false; $("#account").hidden = false;
     $("#who").textContent = session.user.email || "Signed in";
+    const pwSet = store.get("pw-set", false);
+    $("#pw-nudge").hidden = pwSet; $("#pw-open").textContent = pwSet ? "Change password" : "Set password";
     db = remoteDB();
     db.collection("terms").orderBy("term").limit(5000).onSnapshot((snap) => {
       TERMS = snap.docs.map((x) => Object.assign({ id: x.id }, x.data())).filter((t) => t.term);
@@ -684,7 +701,7 @@ footer.foot { font-size: 12.5px; color: var(--ink-3); }
 
   if (!sb) {
     showGate("This copy isn't connected to a database yet. Fill in config.js with your Supabase project URL and anon key.");
-    $("#gate-send").disabled = true;
+    $("#gate-send").disabled = true; $("#gate-signin").disabled = true;
   } else {
     sb.auth.getSession().then(({ data }) => startSession(data.session));
     sb.auth.onAuthStateChange((_event, session) => startSession(session));
@@ -694,11 +711,39 @@ footer.foot { font-size: 12.5px; color: var(--ink-3); }
       $("#gate-send").disabled = true; $("#gate-status").textContent = "Sending...";
       const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin + location.pathname, shouldCreateUser: false } });
       $("#gate-send").disabled = false;
-      $("#gate-status").textContent = error
-        ? (/signups not allowed|not found|invalid/i.test(error.message) ? "That email isn't invited yet. Ask the owner to invite you." : "Couldn't send the link. Try again in a minute.")
-        : "Check your email for the sign-in link.";
+      $("#gate-status").textContent = !error ? "Check your email for the sign-in link. Open it on this device."
+        : /rate limit|too many|seconds/i.test(error.message) ? "Too many sign-in emails were sent recently. Try again in an hour, or sign in with your password."
+        : /signups not allowed|not found|invalid/i.test(error.message) ? "That email isn't invited yet. Ask the owner to invite you."
+        : "Couldn't send the link: " + error.message;
     };
-    $("#gate-email").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#gate-send").click(); });
+    $("#gate-signin").onclick = async () => {
+      const email = $("#gate-email").value.trim(), password = $("#gate-pass").value;
+      if (!/^\S+@\S+\.\S+$/.test(email)) { $("#gate-status").textContent = "Enter a full email address."; return; }
+      if (!password) { $("#gate-status").textContent = "Enter your password, or use the email link."; return; }
+      $("#gate-signin").disabled = true; $("#gate-status").textContent = "Signing in...";
+      const { error } = await sb.auth.signInWithPassword({ email, password });
+      $("#gate-signin").disabled = false;
+      $("#gate-status").textContent = !error ? "" : /invalid login|credentials/i.test(error.message)
+        ? "Wrong email or password. If you haven't set a password yet, use the email link once, then click Set password."
+        : "Couldn't sign in: " + error.message;
+      if (!error) $("#gate-pass").value = "";
+    };
+    $("#gate-email").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#gate-pass").focus(); });
+    $("#gate-pass").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#gate-signin").click(); });
+    const pwShow = (on) => { $("#pw-form").hidden = !on; $("#pw-status").textContent = ""; $("#pw-new").value = ""; $("#pw-again").value = ""; if (on) $("#pw-new").focus(); };
+    $("#pw-open").onclick = () => pwShow($("#pw-form").hidden);
+    $("#pw-cancel").onclick = () => pwShow(false);
+    $("#pw-save").onclick = async () => {
+      const a = $("#pw-new").value, b = $("#pw-again").value;
+      if (a.length < 8) { $("#pw-status").textContent = "Use at least 8 characters."; return; }
+      if (a !== b) { $("#pw-status").textContent = "The two passwords don't match."; return; }
+      $("#pw-save").disabled = true; $("#pw-status").textContent = "Saving...";
+      const { error } = await sb.auth.updateUser({ password: a });
+      $("#pw-save").disabled = false;
+      if (error) { $("#pw-status").textContent = /same|different/i.test(error.message) ? "That's already your password." : "Didn't save: " + error.message; return; }
+      store.set("pw-set", true); $("#pw-nudge").hidden = true;
+      pwShow(false); $("#pw-open").textContent = "Change password";
+    };
     $("#signout").onclick = () => sb.auth.signOut();
   }
 
