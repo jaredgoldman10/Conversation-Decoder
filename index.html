@@ -704,7 +704,7 @@ footer.foot { font-size: 12.5px; color: var(--ink-3); }
     $("#gate-send").disabled = true; $("#gate-signin").disabled = true;
   } else {
     sb.auth.getSession().then(({ data }) => startSession(data.session));
-    sb.auth.onAuthStateChange((_event, session) => startSession(session));
+    sb.auth.onAuthStateChange((_event, session) => { setTimeout(() => startSession(session), 0); });
     $("#gate-send").onclick = async () => {
       const email = $("#gate-email").value.trim();
       if (!/^\S+@\S+\.\S+$/.test(email)) { $("#gate-status").textContent = "Enter a full email address."; return; }
@@ -738,9 +738,10 @@ footer.foot { font-size: 12.5px; color: var(--ink-3); }
       if (a.length < 8) { $("#pw-status").textContent = "Use at least 8 characters."; return; }
       if (a !== b) { $("#pw-status").textContent = "The two passwords don't match."; return; }
       $("#pw-save").disabled = true; $("#pw-status").textContent = "Saving...";
-      const { error } = await sb.auth.updateUser({ password: a });
+      const timeout = new Promise((res) => setTimeout(() => res({ error: { message: "timeout" } }), 20000));
+      const { error } = await Promise.race([sb.auth.updateUser({ password: a }), timeout]);
       $("#pw-save").disabled = false;
-      if (error) { $("#pw-status").textContent = /same|different/i.test(error.message) ? "That's already your password." : "Didn't save: " + error.message; return; }
+      if (error) { $("#pw-status").textContent = error.message === "timeout" ? "That took too long. Refresh the page and try again." : /same|different/i.test(error.message) ? "That's already your password." : /reauth|recent/i.test(error.message) ? "For security, sign out, sign back in with an email link, then set the password right away." : "Didn't save: " + error.message; return; }
       store.set("pw-set", true); $("#pw-nudge").hidden = true;
       pwShow(false); $("#pw-open").textContent = "Change password";
     };
