@@ -32,6 +32,7 @@
   --mark: #5b4a12; --good: #6ad3a0; --good-soft: #15302a; --warn: #f0b95e; --warn-soft: #33270f; color-scheme: dark;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { background: var(--paper); color: var(--ink); }
 body { font-family: var(--f-body); font-size: 15px; line-height: 1.5; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 20px 48px; }
 .wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 20px; }
@@ -528,7 +529,7 @@ footer.foot { font-size: 12.5px; color: var(--ink-3); }
   }
   function renderGlossary() {
     const el = $("#g-list");
-    if (!db) { el.innerHTML = emptyState("Your glossary lives here", "It loads when this page is open in Claude. Each entry follows your four-part frame."); return; }
+    if (!db) { el.innerHTML = emptyState("Your glossary lives here", "Sign in to load it. Each entry follows the four-part frame."); return; }
     if (!live) { el.innerHTML = dbError ? emptyState("The glossary didn't load", esc(dbError)) : `<p class="note">Loading your glossary...</p>`; return; }
     if (!TERMS.length) { el.innerHTML = emptyState("No terms yet", "Decode a term on the left and save it, or log a conversation and let an AI pick out the jargon."); return; }
     const q = state.q;
@@ -547,7 +548,7 @@ footer.foot { font-size: 12.5px; color: var(--ink-3); }
   }
   function renderQuiz() {
     const el = $("#quiz");
-    if (!db || !live) { el.innerHTML = emptyState("Quiz yourself on the terms you're learning", "It works once your glossary loads."); return; }
+    if (!db || !live) { el.innerHTML = emptyState("Quiz yourself on the terms you're learning", "It works once you're signed in."); return; }
     if (!state.quiz) nextQuiz();
     const t = state.quiz && TERMS.find((x) => x.id === state.quiz.id);
     if (!t) { el.innerHTML = `<p class="note">Every term is marked known. Mark some as learning, or log your next conversation.</p>`; return; }
