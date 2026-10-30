@@ -113,9 +113,40 @@ mark { background: var(--mark); color: inherit; border-radius: 3px; padding: 0 2
 @media (max-width: 560px) { .call dl { grid-template-columns: minmax(0, 1fr); } }
 .call dt { color: var(--ink-3); font-size: 12.5px; padding-top: 2px; }
 .call dd { margin: 0 0 4px; overflow-wrap: anywhere; white-space: pre-wrap; }
-.quiz { display: grid; gap: 12px; justify-items: start; }
-.quiz .word { font-family: var(--f-head); font-weight: 600; font-size: 30px; line-height: 1.15; }
-.quiz .score { font-family: var(--f-mono); font-size: 12px; color: var(--ink-3); }
+/* Flashcards: settings row, progress rail, then one card that flips in place. */
+.quiz { display: grid; gap: 14px; min-width: 0; }
+.fc-set { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+.fc-set > div { flex: 1 1 150px; min-width: 0; }
+.fc-set select { padding: 7px 9px; font-size: 14px; }
+.fc-prog { display: grid; gap: 6px; }
+.fc-prog .meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; font-variant-numeric: tabular-nums; }
+.fc-rail { height: 4px; border-radius: 999px; background: var(--rule-2); overflow: hidden; display: flex; }
+.fc-rail span { display: block; height: 100%; }
+.fc-rail .r-good { background: var(--good); }
+.fc-rail .r-warn { background: var(--warn); }
+.fc-stage { perspective: 1400px; }
+.fc-card { position: relative; display: grid; width: 100%; min-height: 260px; padding: 0; border: 0; background: transparent; color: inherit;
+  text-align: left; cursor: pointer; transform-style: preserve-3d; font: inherit; border-radius: var(--r); }
+.fc-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.fc-face { grid-area: 1 / 1; display: grid; align-content: center; gap: 12px; padding: 24px 22px; border-radius: var(--r);
+  border: 1px solid var(--rule); background: var(--paper); backface-visibility: hidden; -webkit-backface-visibility: hidden; min-width: 0; }
+.fc-face.back { background: var(--sheet); transform: rotateY(180deg); align-content: start; }
+.fc-card.flipped { transform: rotateY(180deg); }
+@media (prefers-reduced-motion: no-preference) { .fc-card { transition: transform .45s cubic-bezier(.3,.7,.3,1); } }
+@media (prefers-reduced-motion: reduce) { .fc-face.back { transform: none; } .fc-card.flipped { transform: none; }
+  .fc-card .fc-face.back { visibility: hidden; } .fc-card.flipped .fc-face.back { visibility: visible; } .fc-card.flipped .fc-face.front { visibility: hidden; } }
+.fc-face .big { font-family: var(--f-head); font-weight: 600; font-size: clamp(26px, 5vw, 36px); line-height: 1.12; overflow-wrap: anywhere; text-wrap: balance; }
+.fc-face .clue { font-size: 18px; line-height: 1.45; overflow-wrap: anywhere; }
+.fc-face .hint { font-family: var(--f-mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
+.fc-face .tags { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.fc-nav { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.fc-nav .grow { flex: 1 1 auto; }
+.fc-nav button.got { background: var(--good); border-color: var(--good); color: var(--sheet); }
+.fc-nav button.miss { background: transparent; border-color: var(--warn); color: var(--warn); }
+.fc-keys { font-size: 12px; color: var(--ink-3); margin: 0; }
+.fc-done { display: grid; gap: 10px; border: 1px solid var(--rule); border-radius: var(--r); padding: 22px; background: var(--paper); }
+.fc-done .big { font-family: var(--f-head); font-weight: 600; font-size: 28px; }
+@media (hover: none) { .fc-keys { display: none; } }
 .edit { display: grid; gap: 8px; }
 .edit textarea { min-height: 56px; }
 @media (prefers-reduced-motion: no-preference) { .entry.flash { animation: flash 1.2s ease-out; } }
@@ -236,10 +267,10 @@ footer.foot { font-size: 12.5px; color: var(--ink-3); }
       </section>
     </div>
 
-    <section class="panel" aria-label="Glossary, quiz and conversation log">
+    <section class="panel" aria-label="Glossary, flashcards and conversation log">
       <div class="tabs" role="tablist">
         <button role="tab" id="tab-glossary" aria-controls="pane-glossary" aria-selected="true" type="button">Glossary<span class="count" id="n-terms"></span></button>
-        <button role="tab" id="tab-quiz" aria-controls="pane-quiz" aria-selected="false" type="button">Quiz me<span class="count" id="n-learning"></span></button>
+        <button role="tab" id="tab-quiz" aria-controls="pane-quiz" aria-selected="false" type="button">Flashcards<span class="count" id="n-learning"></span></button>
         <button role="tab" id="tab-calls" aria-controls="pane-calls" aria-selected="false" type="button">Conversations<span class="count" id="n-calls"></span></button>
       </div>
 
@@ -283,7 +314,7 @@ footer.foot { font-size: 12.5px; color: var(--ink-3); }
 
   let db = null, sample = null, live = false, dbError = "";
   let TERMS = [], CALLS = [];
-  const state = { q: "", tag: store.get("tag", "All"), learningOnly: store.get("learning", false), tab: store.get("tab", "glossary"), quiz: null, quizStats: { right: 0, seen: 0 } };
+  const state = { q: "", tag: store.get("tag", "All"), learningOnly: store.get("learning", false), tab: store.get("tab", "glossary"), fc: null, fcDeck: store.get("fc-deck", "learning"), fcFront: store.get("fc-front", "term") };
 
   // ---------------------------------------------------------------- matching
   function namesOf(t) { return [t.term].concat(Array.isArray(t.aliases) ? t.aliases : []).filter(Boolean); }
@@ -521,7 +552,7 @@ footer.foot { font-size: 12.5px; color: var(--ink-3); }
   function setTab(tab) {
     state.tab = tab; store.set("tab", tab);
     ["glossary", "quiz", "calls"].forEach((k) => { $("#tab-" + k).setAttribute("aria-selected", String(k === tab)); $("#pane-" + k).hidden = k !== tab; });
-    if (tab === "quiz" && !state.quiz) nextQuiz();
+    if (tab === "quiz" && !state.fc) buildDeck();
     render();
   }
   ["glossary", "quiz", "calls"].forEach((k) => { $("#tab-" + k).onclick = () => setTab(k); });
@@ -553,36 +584,151 @@ footer.foot { font-size: 12.5px; color: var(--ink-3); }
       .sort((a, b) => a.term.localeCompare(b.term));
     el.innerHTML = list.length ? list.map((t) => entryHTML(t)).join("") : `<p class="note">Nothing matches. Try another word, or decode it on the left.</p>`;
   }
-  function nextQuiz() {
-    const pool = TERMS.filter((t) => t.mastered !== true);
-    if (!pool.length) { state.quiz = null; return; }
-    const prev = state.quiz && state.quiz.id;
-    let pick = pool[Math.floor(Math.random() * pool.length)];
-    if (pool.length > 1 && pick.id === prev) pick = pool[(pool.indexOf(pick) + 1) % pool.length];
-    state.quiz = { id: pick.id, shown: false };
+  // ---------------------------------------------------------------- flashcards
+  function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+  function deckOptions() {
+    const tags = TAGS.filter((g) => TERMS.some((t) => (t.tag || "Other") === g));
+    const ctxs = Array.from(new Set(TERMS.map((t) => t.context).filter(Boolean))).sort();
+    const learning = TERMS.filter((t) => t.mastered !== true).length;
+    return [["learning", `Still learning (${learning})`], ["all", `All terms (${TERMS.length})`]]
+      .concat(tags.map((g) => ["tag:" + g, `Area: ${g}`]))
+      .concat(ctxs.map((c) => ["ctx:" + c, `Context: ${c}`]));
+  }
+  function deckPool(key) {
+    if (key === "all") return TERMS.slice();
+    if (key.startsWith("tag:")) return TERMS.filter((t) => (t.tag || "Other") === key.slice(4));
+    if (key.startsWith("ctx:")) return TERMS.filter((t) => t.context === key.slice(4));
+    if (key.startsWith("ids:")) return key.slice(4).split(",").map((id) => TERMS.find((t) => t.id === id)).filter(Boolean);
+    return TERMS.filter((t) => t.mastered !== true);
+  }
+  function buildDeck(ids) {
+    const pool = ids ? deckPool("ids:" + ids.join(",")) : deckPool(state.fcDeck);
+    state.fc = { ids: shuffle(pool.map((t) => t.id)), i: 0, flipped: false, results: {}, review: !!ids };
+  }
+  function fcTerm() { const f = state.fc; return f && TERMS.find((t) => t.id === f.ids[f.i]); }
+  function fcCounts() { const r = Object.values(state.fc.results); return { got: r.filter((x) => x).length, miss: r.filter((x) => !x).length }; }
+  function fcFrontHTML(t) {
+    const meta = `<div class="tags"><span class="tag">${esc(t.tag || "Other")}</span>${t.context ? `<span class="aka">${esc(t.context)}</span>` : ""}
+      <span class="pill ${t.mastered === true ? "known" : "learning"}">${t.mastered === true ? "Known" : "Learning"}</span></div>`;
+    if (state.fcFront === "meaning") return `${meta}<span class="hint">What's the term?</span><div class="clue">${esc(t.plain || "(no meaning saved)")}</div><span class="hint">Tap to flip</span>`;
+    const aka = (t.aliases || []).filter(Boolean);
+    return `${meta}<div class="big">${esc(t.term)}</div>${aka.length ? `<span class="aka">also ${esc(aka.join(", "))}</span>` : ""}
+      <span class="hint">Say the meaning, why it matters and the decision it moves. Tap to flip</span>`;
+  }
+  function fcBackHTML(t) {
+    const aka = (t.aliases || []).filter(Boolean);
+    return `<div class="big" style="font-size:26px">${esc(t.term)}</div>${aka.length ? `<span class="aka">also ${esc(aka.join(", "))}</span>` : ""}${senseHTML(t)}`;
   }
   function renderQuiz() {
     const el = $("#quiz");
-    if (!db || !live) { el.innerHTML = emptyState("Quiz yourself on the terms you're learning", "It works once you're signed in."); return; }
-    if (!state.quiz) nextQuiz();
-    const t = state.quiz && TERMS.find((x) => x.id === state.quiz.id);
-    if (!t) { el.innerHTML = `<p class="note">Every term is marked known. Mark some as learning, or log your next conversation.</p>`; return; }
-    const s = state.quizStats;
-    el.innerHTML = `<span class="score">${s.seen ? `${s.right} of ${s.seen} right this session · ` : ""}three in a row marks a term known</span>
-      <div class="word">${esc(t.term)}</div>
-      ${state.quiz.shown ? senseHTML(t) + `<div class="row"><button type="button" id="q-yes">I had it</button><button type="button" class="quiet" id="q-no">Not yet</button></div>`
-        : `<p class="note">Say the plain meaning, why it matters and the decision it moves. Then check.</p><button type="button" id="q-show">Show the answer</button>`}`;
-    const show = $("#q-show"); if (show) show.onclick = () => { state.quiz.shown = true; renderQuiz(); };
-    const grade = async (ok) => {
-      s.seen++; if (ok) s.right++;
-      const streak = ok ? Number(t.streak || 0) + 1 : 0;
-      try { await db.collection("terms").doc(t.id).update({ streak, mastered: streak >= 3, lastReviewed: new Date().toISOString() }); } catch (e) { /* keep quizzing */ }
-      nextQuiz(); renderQuiz();
-    };
-    const y = $("#q-yes"), n = $("#q-no");
-    if (y) y.onclick = () => grade(true);
-    if (n) n.onclick = () => grade(false);
+    if (!db || !live) { el.innerHTML = emptyState("Study your terms as flashcards", "It works once you're signed in."); return; }
+    if (!TERMS.length) { el.innerHTML = `<p class="note">No terms yet. Save a few to your word bank first.</p>`; return; }
+    if (!state.fc) buildDeck();
+    const f = state.fc;
+    f.ids = f.ids.filter((id) => TERMS.some((t) => t.id === id));
+    if (f.i > f.ids.length) f.i = f.ids.length;
+    const opts = deckOptions();
+    if (!f.review && !opts.some(([k]) => k === state.fcDeck)) { state.fcDeck = "learning"; buildDeck(); return renderQuiz(); }
+    const settings = `<div class="fc-set">
+        <div><label for="fc-deck">Deck</label><select id="fc-deck">${f.review ? `<option value="__review" selected>Review missed cards</option>` : ""}${opts.map(([k, v]) => `<option value="${esc(k)}"${!f.review && k === state.fcDeck ? " selected" : ""}>${esc(v)}</option>`).join("")}</select></div>
+        <div><label for="fc-front">Show first</label><select id="fc-front"><option value="term"${state.fcFront === "term" ? " selected" : ""}>Term</option><option value="meaning"${state.fcFront === "meaning" ? " selected" : ""}>Meaning</option></select></div>
+        <button type="button" class="quiet small" id="fc-shuffle">Shuffle and restart</button></div>`;
+    const n = f.ids.length, c = fcCounts();
+    if (!n) {
+      el.innerHTML = settings + `<div class="fc-done"><div class="big">Nothing in this deck</div><span class="note">${state.fcDeck === "learning" ? "Every term is marked known. Pick All terms to review them anyway." : "Pick another deck."}</span></div>`;
+      return bindFc();
+    }
+    const prog = `<div class="fc-prog"><div class="meta"><span class="meta">${f.i < n ? `Card ${f.i + 1} of ${n}` : `Done · ${n} cards`}</span>
+        <span class="meta">${c.got} got it · ${c.miss} still learning · three in a row marks a term known</span></div>
+        <div class="fc-rail" aria-hidden="true"><span class="r-good" style="width:${(c.got / n) * 100}%"></span><span class="r-warn" style="width:${(c.miss / n) * 100}%"></span></div></div>`;
+    if (f.i >= n) {
+      const missed = f.ids.filter((id) => f.results[id] === false);
+      el.innerHTML = settings + prog + `<div class="fc-done"><div class="big">${c.got} of ${n} on the first try</div>
+        <span class="note">${missed.length ? `${missed.length} to go over again.` : "Clean round."}</span>
+        <div class="fc-nav">${missed.length ? `<button type="button" id="fc-review">Review the ${missed.length} I missed</button>` : ""}<button type="button" class="${missed.length ? "quiet" : ""}" id="fc-again">Go through the deck again</button></div></div>`;
+      const rv = $("#fc-review"); if (rv) rv.onclick = () => { buildDeck(missed); renderQuiz(); };
+      $("#fc-again").onclick = () => { buildDeck(); renderQuiz(); };
+      return bindFc();
+    }
+    const t = fcTerm();
+    el.innerHTML = settings + prog + `<div class="fc-stage">
+        <div class="fc-card${f.flipped ? " flipped" : ""}" id="fc-card" role="button" tabindex="0" aria-pressed="${f.flipped}" aria-label="${f.flipped ? "Answer side. Press to flip back" : "Question side. Press to flip"}">
+          <div class="fc-face front" aria-hidden="${f.flipped}">${fcFrontHTML(t)}</div>
+          <div class="fc-face back" aria-hidden="${!f.flipped}">${fcBackHTML(t)}</div>
+        </div></div>
+      <div class="fc-nav" id="fc-navbox"></div>
+      <p class="fc-keys">Keys: Space flips · 1 got it · 2 still learning · arrows move between cards. On a phone, swipe the card.</p>`;
+    bindFc();
+    const card = $("#fc-card");
+    card.onclick = flipCard;
+    card.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); flipCard(); } };
+    let x0 = null, y0 = null;
+    card.addEventListener("touchstart", (e) => { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }, { passive: true });
+    card.addEventListener("touchend", (e) => {
+      if (x0 === null) return;
+      const dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0; x0 = null;
+      if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) { card.onclick = null; setTimeout(() => { card.onclick = flipCard; }, 0); move(dx < 0 ? 1 : -1); }
+    });
+    renderNav();
   }
+  function renderNav() {
+    const f = state.fc, t = fcTerm(), box = $("#fc-navbox"); if (!box || !t) return;
+    const graded = t.id in f.results;
+    box.innerHTML = `<button type="button" class="quiet small" id="fc-prev"${f.i === 0 ? " disabled" : ""}>Back</button>
+        <span class="grow"></span>
+        ${f.flipped ? `<button type="button" class="miss" id="fc-miss">Still learning</button><button type="button" class="got" id="fc-got">Got it</button>`
+                    : `<button type="button" id="fc-flip">Flip card</button>`}
+        <span class="grow"></span>
+        <button type="button" class="quiet small" id="fc-skip">${graded ? "Next" : "Skip"}</button>`;
+    $("#fc-prev").onclick = () => move(-1);
+    $("#fc-skip").onclick = () => move(1);
+    const fl = $("#fc-flip"); if (fl) fl.onclick = flipCard;
+    const g = $("#fc-got"), m = $("#fc-miss");
+    if (g) g.onclick = () => grade(true);
+    if (m) m.onclick = () => grade(false);
+  }
+  function bindFc() {
+    $("#fc-deck").onchange = (e) => { if (e.target.value === "__review") return; state.fcDeck = e.target.value; store.set("fc-deck", state.fcDeck); buildDeck(); renderQuiz(); };
+    $("#fc-front").onchange = (e) => { state.fcFront = e.target.value; store.set("fc-front", state.fcFront); state.fc.flipped = false; renderQuiz(); };
+    $("#fc-shuffle").onclick = () => { if (state.fc && state.fc.review) { const ids = state.fc.ids.slice(); buildDeck(ids); } else buildDeck(); renderQuiz(); };
+  }
+  function flipCard() {
+    const f = state.fc; if (!f || f.i >= f.ids.length) return;
+    f.flipped = !f.flipped;
+    const card = $("#fc-card");
+    if (!card) return renderQuiz();
+    card.classList.toggle("flipped", f.flipped);
+    card.setAttribute("aria-pressed", String(f.flipped));
+    card.setAttribute("aria-label", f.flipped ? "Answer side. Press to flip back" : "Question side. Press to flip");
+    card.querySelector(".front").setAttribute("aria-hidden", String(f.flipped));
+    card.querySelector(".back").setAttribute("aria-hidden", String(!f.flipped));
+    renderNav();
+  }
+  function move(d) {
+    const f = state.fc; if (!f) return;
+    f.i = Math.max(0, Math.min(f.ids.length, f.i + d)); f.flipped = false; renderQuiz();
+    const c = $("#fc-card"); if (c) c.focus({ preventScroll: true });
+  }
+  async function grade(ok) {
+    const f = state.fc, t = fcTerm(); if (!t || !f.flipped) return;
+    const first = !(t.id in f.results);
+    if (first) f.results[t.id] = ok;
+    move(1);
+    if (!first) return;
+    const streak = ok ? Number(t.streak || 0) + 1 : 0;
+    try { await db.collection("terms").doc(t.id).update({ streak, mastered: ok ? streak >= 3 || t.mastered === true : false, lastReviewed: new Date().toISOString() }); }
+    catch (e) { /* keep studying */ }
+  }
+  document.addEventListener("keydown", (e) => {
+    if (state.tab !== "quiz" || $("#pane-quiz").hidden || !state.fc) return;
+    if (e.target.closest && e.target.closest("input, textarea, select")) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === " " && !(e.target.closest && e.target.closest("button, [role=button], a"))) { e.preventDefault(); flipCard(); }
+    else if (e.key === "ArrowRight") move(1);
+    else if (e.key === "ArrowLeft") move(-1);
+    else if (e.key === "1" && state.fc.flipped) grade(true);
+    else if (e.key === "2" && state.fc.flipped) grade(false);
+  });
   function renderCalls() {
     const el = $("#calls");
     if (!db || !live) { el.innerHTML = emptyState("Your conversation log lives here", "Each saved conversation keeps your notes, the signals and the terms you heard."); return; }
